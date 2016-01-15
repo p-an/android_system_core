@@ -94,10 +94,6 @@ bool waiting_for_exec = false;
 static int epoll_fd = -1;
 
 
-/*#define is_selinux_enabled return_zero
-int return_zero(){return 0;}
-*/
-
 void register_epoll_handler(int fd, void (*fn)()) {
     epoll_event ev;
     ev.events = EPOLLIN;
