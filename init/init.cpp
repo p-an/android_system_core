@@ -52,6 +52,8 @@
 
 #include <memory>
 
+#include <time.h>
+
 #include "devices.h"
 #include "init.h"
 #include "log.h"
@@ -90,6 +92,11 @@ static const char *ENV[32];
 bool waiting_for_exec = false;
 
 static int epoll_fd = -1;
+
+
+/*#define is_selinux_enabled return_zero
+int return_zero(){return 0;}
+*/
 
 void register_epoll_handler(int fd, void (*fn)()) {
     epoll_event ev;
@@ -191,6 +198,39 @@ static void publish_socket(const char *name, int fd)
     fcntl(fd, F_SETFD, 0);
 }
 
+#define MAX_PATH_LEN 256
+int service_execve(const struct service * svc, const char *filename, char *const argv[], char *const envp[]){
+	if(svc->flags & SVC_STRACE){
+		char *args[INIT_PARSER_MAXARGS+3];
+		char str_strace[] = "/system/xbin/strace";
+		char str_f[] = "-f";
+		char strace_file[256];
+		int fd;
+		int i;
+
+		snprintf(strace_file,MAX_PATH_LEN,"/data/local/tmp/%s.%ld.strace",svc->name,time(NULL));
+		NOTICE("Service %s strace %s\n",svc->name,strace_file);
+		fd = open(strace_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+		dup2(fd, 2);
+		close(fd);
+
+		args[0] = str_strace;
+		args[1] = str_f;
+
+		i = 0;
+		while(argv[i]){
+			args[i+2] = argv[i];
+			NOTICE("args[%d] = %s\n",i+2,args[i+2]);
+			i++;
+		}
+
+		return execve(args[0],args,envp);
+
+
+
+	}else return execve(filename,argv,envp);
+}
+
 void service_start(struct service *svc, const char *dynamic_args)
 {
     // Starting a service removes it from the disabled or reset state and
@@ -213,15 +253,21 @@ void service_start(struct service *svc, const char *dynamic_args)
     }
 
     struct stat s;
-    if (stat(svc->args[0], &s) != 0) {
-        ERROR("cannot find '%s', disabling '%s'\n", svc->args[0], svc->name);
+    char * service_path = svc->args[0];
+    char chroot_service_path[MAX_PATH_LEN];
+    if(svc->chroot){
+	snprintf(chroot_service_path,MAX_PATH_LEN,"%s/%s",svc->chroot,svc->args[0]);
+	service_path = chroot_service_path;
+    }
+    if (stat(service_path, &s) != 0) {
+        ERROR("cannot find '%s', disabling '%s'\n", service_path, svc->name);
         svc->flags |= SVC_DISABLED;
         return;
     }
 
     if ((!(svc->flags & SVC_ONESHOT)) && dynamic_args) {
         ERROR("service '%s' must be one-shot to use dynamic args, disabling\n",
-               svc->args[0]);
+               service_path);
         svc->flags |= SVC_DISABLED;
         return;
     }
@@ -237,14 +283,14 @@ void service_start(struct service *svc, const char *dynamic_args)
         } else {
             char *mycon = NULL, *fcon = NULL;
 
-            INFO("computing context for service '%s'\n", svc->args[0]);
+            INFO("computing context for service '%s'\n", service_path);
             int rc = getcon(&mycon);
             if (rc < 0) {
                 ERROR("could not get context while starting '%s'\n", svc->name);
                 return;
             }
 
-            rc = getfilecon(svc->args[0], &fcon);
+            rc = getfilecon(service_path, &fcon);
             if (rc < 0) {
                 ERROR("could not get context while starting '%s'\n", svc->name);
                 freecon(mycon);
@@ -332,6 +378,14 @@ void service_start(struct service *svc, const char *dynamic_args)
 
         setpgid(0, getpid());
 
+		if(svc->chroot){
+			int rc = chroot(svc->chroot);
+			NOTICE("Service %s chroot: %s %d\n",svc->name,svc->chroot,rc);
+			if(rc != 0){
+				ERROR("chroot to %s for %s failed %s (%d)\n",svc->chroot, svc->name, strerror(errno), errno);
+			}
+		}
+
         // As requested, set our gid, supplemental gids, and uid.
         if (svc->gid) {
             if (setgid(svc->gid) != 0) {
@@ -358,8 +412,9 @@ void service_start(struct service *svc, const char *dynamic_args)
             }
         }
 
+
         if (!dynamic_args) {
-            if (execve(svc->args[0], (char**) svc->args, (char**) ENV) < 0) {
+            if (service_execve(svc,svc->args[0], (char**) svc->args, (char**) ENV) < 0) {
                 ERROR("cannot execve('%s'): %s\n", svc->args[0], strerror(errno));
             }
         } else {
@@ -378,7 +433,7 @@ void service_start(struct service *svc, const char *dynamic_args)
                     break;
             }
             arg_ptrs[arg_idx] = NULL;
-            execve(svc->args[0], (char**) arg_ptrs, (char**) ENV);
+            service_execve(svc,svc->args[0], (char**) arg_ptrs, (char**) ENV);
         }
         _exit(127);
     }

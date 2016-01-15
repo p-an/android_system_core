@@ -102,6 +102,9 @@ enum {
     KEYWORD(wait,        COMMAND, 1, do_wait)
     KEYWORD(write,       COMMAND, 2, do_write)
     KEYWORD(writepid,    OPTION,  0, 0)
+
+    KEYWORD(chroot,    OPTION,  0, 0)
+    KEYWORD(strace,     OPTION,  0, 0)
 #ifdef __MAKE_KEYWORD_ENUM__
     KEYWORD_COUNT,
 };

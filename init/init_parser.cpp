@@ -130,6 +130,7 @@ static int lookup_keyword(const char *s)
         if (!strcmp(s, "hown")) return K_chown;
         if (!strcmp(s, "hmod")) return K_chmod;
         if (!strcmp(s, "ritical")) return K_critical;
+        if (!strcmp(s, "hroot")) return K_chroot;
         break;
     case 'd':
         if (!strcmp(s, "isabled")) return K_disabled;
@@ -195,6 +196,7 @@ static int lookup_keyword(const char *s)
         if (!strcmp(s, "wapon_all")) return K_swapon_all;
         if (!strcmp(s, "ymlink")) return K_symlink;
         if (!strcmp(s, "ysclktz")) return K_sysclktz;
+        if (!strcmp(s, "trace")) return K_strace;
         break;
     case 't':
         if (!strcmp(s, "rigger")) return K_trigger;
@@ -944,6 +946,19 @@ static void parse_line_service(struct parse_state *state, int nargs, char **args
         for (int i = 1; i < nargs; ++i) {
             svc->writepid_files_->push_back(args[i]);
         }
+        break;
+    case K_chroot:
+        if (nargs != 2) {
+            parse_error(state, "chroot option requires a path\n");
+        } else {
+            svc->chroot = args[1];
+			NOTICE("chroot: %s",args[1]);
+			NOTICE("chroot: %s",svc->chroot);
+        }
+        break;
+    case K_strace:
+        svc->flags |= SVC_STRACE;
+		NOTICE("strace\n");
         break;
 
     default:

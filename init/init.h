@@ -87,6 +87,7 @@ struct svcenvinfo {
 #define SVC_RESTART        0x100  // Use to safely restart (stop, wait, start) a service.
 #define SVC_DISABLED_START 0x200  // A start was requested but it was disabled at the time.
 #define SVC_EXEC           0x400  // This synthetic service corresponds to an 'exec'.
+#define SVC_STRACE         0x800  // run with strace
 
 #define NR_SVC_SUPP_GIDS 12    /* twelve supplementary groups */
 
@@ -113,6 +114,7 @@ struct service {
     size_t nr_supp_gids;
 
     const char* seclabel;
+	const char* chroot;
 
     struct socketinfo *sockets;
     struct svcenvinfo *envvars;
@@ -128,6 +130,7 @@ struct service {
 
     IoSchedClass ioprio_class;
     int ioprio_pri;
+
 
     int nargs;
     /* "MUST BE AT THE END OF THE STRUCT" */
