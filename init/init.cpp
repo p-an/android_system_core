@@ -207,6 +207,9 @@ int service_execve(const struct service * svc, const char *filename, char *const
 		snprintf(strace_file,MAX_PATH_LEN,"/data/local/tmp/%s.%ld.strace",svc->name,time(NULL));
 		NOTICE("Service %s strace %s\n",svc->name,strace_file);
 		fd = open(strace_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+		if(fd == -1){
+			ERROR("Service %s cannot open %s fd %d err %d %s\n",svc->name,strace_file,fd,errno,strerror(errno));
+		}
 		dup2(fd, 2);
 		close(fd);
 
