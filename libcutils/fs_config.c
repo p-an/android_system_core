@@ -148,7 +148,8 @@ static const struct fs_path_config android_files[] = {
     { 00750, AID_ROOT,      AID_SHELL,     0, "init*" },
     { 00750, AID_ROOT,      AID_SHELL,     0, "sbin/fs_mgr" },
     { 00640, AID_ROOT,      AID_SHELL,     0, "fstab.*" },
-    { 00755, AID_ROOT,      AID_SHELL,     0, "system/cm12chroot/system/bin/*" },
+    { 00755, AID_ROOT,      AID_SHELL,     0, "system/*chroot/system/bin/*" },
+    { 00755, AID_ROOT,      AID_SHELL,     0, "system/*chroot/system/xbin/*" },
     { 00644, AID_ROOT,      AID_ROOT,      0, 0 },
 };
 
@@ -178,6 +179,7 @@ static int fs_config_open(int dir, const char *target_out_path)
     return fd;
 }
 
+#if 0
 static bool fs_config_cmp(bool dir, const char *prefix, size_t len,
                                     const char *path, size_t plen)
 {
@@ -195,6 +197,42 @@ static bool fs_config_cmp(bool dir, const char *prefix, size_t len,
         }
     }
     return !strncmp(prefix, path, len);
+}
+#endif
+
+static bool fs_config_cmp(bool dir, const char *prefix, size_t len,
+                                    const char *path, size_t plen)
+{
+	(void)dir;
+        size_t i = 0;
+        size_t j = 0;
+        int si = -1;
+        bool res = true;
+        while(i <= len && j <= plen){
+                if(prefix[i] == path[j]){
+                        i++;
+                        j++;
+                        continue;
+                }
+                if(prefix[i] == '*'){
+                        si = i;
+                        i++;
+                        while(j <= plen && prefix[i] != path[j])j++;
+                        if(j > plen){
+                                res = false;
+                                break;
+                        }
+                        continue;
+                }
+                if(si != -1){
+                        i = si;
+                        continue;
+                }
+                res = false;
+                break;
+        }
+
+        return res;
 }
 
 void fs_config(const char *path, int dir, const char *target_out_path,

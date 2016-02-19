@@ -224,6 +224,7 @@ int service_execve(const struct service * svc, const char *filename, char *const
 		}
 
 		return execve(args[0],args,envp);
+		ERROR("Service %s cannot execute strace\n",svc->name);
 
 
 
