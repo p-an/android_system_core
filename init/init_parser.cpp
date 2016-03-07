@@ -952,8 +952,7 @@ static void parse_line_service(struct parse_state *state, int nargs, char **args
             parse_error(state, "chroot option requires a path\n");
         } else {
             svc->chroot = args[1];
-			NOTICE("chroot: %s",args[1]);
-			NOTICE("chroot: %s",svc->chroot);
+            NOTICE("chroot: %s",svc->chroot);
         }
         break;
     case K_strace:
@@ -1034,3 +1033,96 @@ static void parse_line_action(struct parse_state* state, int nargs, char **args)
     memcpy(cmd->args, args, sizeof(char*) * nargs);
     list_add_tail(&act->commands, &cmd->clist);
 }
+
+
+static list_declare(chroot_env_lst);
+
+struct chroot_env {
+    struct listnode list;
+    const char * name;
+    char ** envp;
+};
+
+static char ** parse_chroot_env(const char *fn, const std::string& data)
+{   
+    char *args[INIT_PARSER_MAXARGS];
+
+    int nargs = 0;
+
+    char ** envp = (char **)malloc(ENV_SIZE * sizeof(char*));
+    size_t envp_idx = 0;
+
+    parse_state state;
+    state.filename = fn;
+    state.line = 0;
+    state.ptr = strdup(data.c_str());
+    char * sptr = state.ptr;
+    state.nexttoken = 0;
+    state.parse_line = parse_line_no_op;
+
+
+    for (;;) {
+        switch (next_token(&state)) {
+            case T_EOF:
+                envp[envp_idx] = NULL;
+                envp_idx++;
+                free(sptr);
+                return envp;
+            case T_NEWLINE:
+                state.line++;
+                if (nargs) {
+                    if(nargs == 3 && !strcmp(args[0],"export")){
+                        if(envp_idx >= (ENV_SIZE - 1)){
+                            ERROR("No env. room to store: '%s':'%s'\n", args[1], args[2]);
+                        }
+                        size_t l = strlen(args[1]) + strlen(args[2]) + 2;
+                        envp[envp_idx] = (char*)malloc(l * sizeof(char));
+                        sprintf(envp[envp_idx],"%s=%s",args[1],args[2]);
+                        envp_idx++;
+                    }
+                    nargs = 0;
+                }
+            break;
+        case T_TEXT:
+            if (nargs < INIT_PARSER_MAXARGS) {
+                args[nargs++] = state.text;
+            }
+            break;
+        }
+    }
+
+}   
+
+char ** get_chroot_env(const char * path){
+    struct listnode *node;
+    list_for_each(node, &chroot_env_lst){
+        struct chroot_env * ch = node_to_item(node, struct chroot_env, list);
+        if(!strcmp(ch->name,path))return ch->envp;
+    }
+    return 0;
+}
+
+char ** read_chroot_env(const char* path) {
+
+    char ** envp = get_chroot_env(path);
+    if(envp)return envp;
+
+    char f[PATH_MAX];
+    snprintf(f,PATH_MAX,"%s/env.rc",path);
+    NOTICE("Parsing %s ...\n", f);
+    std::string data;
+    if (!read_file(f, &data)) {
+        return NULL;
+    }
+
+    data.push_back('\n');
+    envp = parse_chroot_env(f, data);
+    struct chroot_env * chenv = (struct chroot_env *)malloc(sizeof(struct chroot_env));
+    chenv->name = strdup(path);
+    chenv->envp = envp;
+    list_add_tail(&chroot_env_lst,&chenv->list);
+
+
+    return envp;
+}
+

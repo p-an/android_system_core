@@ -87,7 +87,8 @@ static int have_console;
 static char console_name[PROP_VALUE_MAX] = "/dev/console";
 static time_t process_needs_restart;
 
-static const char *ENV[32];
+static const char *_ENV[32];
+static const char ** ENV = _ENV;
 
 bool waiting_for_exec = false;
 
@@ -131,7 +132,7 @@ int add_environment(const char *key, const char *val)
     size_t key_len = strlen(key);
 
     /* The last environment entry is reserved to terminate the list */
-    for (n = 0; n < (ARRAY_SIZE(ENV) - 1); n++) {
+    for (n = 0; n < (ENV_SIZE - 1); n++) {
 
         /* Delete any existing entry for this key */
         if (ENV[n] != NULL) {
@@ -194,17 +195,16 @@ static void publish_socket(const char *name, int fd)
     fcntl(fd, F_SETFD, 0);
 }
 
-#define MAX_PATH_LEN 256
 int service_execve(const struct service * svc, const char *filename, char *const argv[], char *const envp[]){
 	if(svc->flags & SVC_STRACE){
 		char *args[INIT_PARSER_MAXARGS+3];
 		char str_strace[] = "/system/xbin/strace";
 		char str_f[] = "-f";
-		char strace_file[256];
+		char strace_file[PATH_MAX];
 		int fd;
 		int i;
 
-		snprintf(strace_file,MAX_PATH_LEN,"/data/local/tmp/%s.%ld.strace",svc->name,time(NULL));
+		snprintf(strace_file,PATH_MAX,"/data/local/tmp/%s.%ld.strace",svc->name,time(NULL));
 		NOTICE("Service %s strace %s\n",svc->name,strace_file);
 		fd = open(strace_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
 		if(fd == -1){
@@ -254,10 +254,10 @@ void service_start(struct service *svc, const char *dynamic_args)
 
     struct stat s;
     char * service_path = svc->args[0];
-    char chroot_service_path[MAX_PATH_LEN];
+    char chroot_service_path[PATH_MAX];
     if(svc->chroot){
-	snprintf(chroot_service_path,MAX_PATH_LEN,"%s/%s",svc->chroot,svc->args[0]);
-	service_path = chroot_service_path;
+        snprintf(chroot_service_path,PATH_MAX,"%s/%s",svc->chroot,svc->args[0]);
+        service_path = chroot_service_path;
     }
     if (stat(service_path, &s) != 0) {
         ERROR("cannot find '%s', disabling '%s'\n", service_path, svc->name);
@@ -310,6 +310,12 @@ void service_start(struct service *svc, const char *dynamic_args)
         }
     }
 
+	if(svc->chroot){
+        NOTICE("chroot: %s, looking for env.rc\n",svc->chroot);
+        if(read_chroot_env(svc->chroot))NOTICE("%s/env.rc found\n",svc->chroot);
+        else NOTICE("%s/env.rc not found\n",svc->chroot);
+    }
+
     NOTICE("Starting service '%s'...\n", svc->name);
 
     pid_t pid = fork();
@@ -318,6 +324,14 @@ void service_start(struct service *svc, const char *dynamic_args)
         struct svcenvinfo *ei;
         char tmp[32];
         int fd, sz;
+
+        if(svc->chroot){
+            char ** e = get_chroot_env(svc->chroot);
+            if(e){
+                NOTICE("using specific env for %s in %s\n",svc->name,svc->chroot);
+                ENV = (const char **)e;
+            }
+        }
 
         umask(077);
         if (properties_initialized()) {
@@ -414,7 +428,7 @@ void service_start(struct service *svc, const char *dynamic_args)
 
 
         if (!dynamic_args) {
-            if (service_execve(svc,svc->args[0], (char**) svc->args, (char**) ENV) < 0) {
+            if (service_execve(svc,svc->args[0], (char**) svc->args, (char**)ENV) < 0) {
                 ERROR("cannot execve('%s'): %s\n", svc->args[0], strerror(errno));
             }
         } else {
@@ -433,7 +447,7 @@ void service_start(struct service *svc, const char *dynamic_args)
                     break;
             }
             arg_ptrs[arg_idx] = NULL;
-            service_execve(svc,svc->args[0], (char**) arg_ptrs, (char**) ENV);
+            service_execve(svc,svc->args[0], (char**) arg_ptrs, (char**)ENV);
         }
         _exit(127);
     }

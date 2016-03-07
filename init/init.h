@@ -25,6 +25,9 @@
 #include <cutils/list.h>
 #include <cutils/iosched_policy.h>
 
+#define MAX_PATH_LEN 256
+#define ENV_SIZE 32
+
 struct command
 {
         /* list of commands in an action */
